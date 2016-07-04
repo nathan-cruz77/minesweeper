@@ -1,6 +1,5 @@
-
+# Represents a single slot on the minesweeper board
 class Cell
-
   attr_accessor :state, :has_mine, :has_flag, :clicked, :board
   attr_accessor :line_pos, :col_pos
 
@@ -18,132 +17,96 @@ class Cell
   end
 
   def mines_nearby
-    if self.state == 'unknown'
-      raise 'Unable to check amount of mines nearby. Cell is not clear.'
-    end
-
     amount_nearby = 0
 
-    self.neighbors.each do |neighbor|
-      if neighbor.has_mine
-        amount_nearby += 1
-      end
+    neighbors.each do |neighbor|
+      amount_nearby += 1 if neighbor.has_mine
     end
 
     amount_nearby
-
   end
 
   def deploy_mine
     self.has_mine = true
   end
 
+  def neighbor_lines
+    max_line = board.length
+    [[line_pos - 1, 0].max, line_pos, [line_pos + 1, max_line - 1].min].uniq
+  end
+
+  def neighbor_cols
+    max_col = board[0].length
+    [[col_pos - 1, 0].max, col_pos, [col_pos + 1, max_col - 1].min].uniq
+  end
+
   def neighbors
     all_neighbors = []
 
-    max_line, max_col = self.board.length, self.board[0].length
-
-    line_values = [
-      [self.line_pos - 1, 0].max,
-      self.line_pos,
-      [self.line_pos + 1, max_line - 1].min
-    ]
-
-    col_values = [
-      [self.col_pos - 1, 0].max,
-      self.col_pos,
-      [self.col_pos + 1, max_col - 1].min
-    ]
-
-    line_values.uniq!
-    col_values.uniq!
+    line_values = neighbor_lines
+    col_values = neighbor_cols
 
     positions = line_values.product(col_values)
-    positions.delete_at(positions.index([self.line_pos, self.col_pos]))
+    positions.delete_at(positions.index([line_pos, col_pos]))
 
-    positions.each do |line_value, col_value|
-      all_neighbors.push(self.board[line_value][col_value])
-    end
+    positions.each { |line, col| all_neighbors.push(board[line][col]) }
 
     all_neighbors.compact
   end
 
-  def click
-    # puts "Clicking [#{self.line_pos}, #{self.col_pos}]"
-    if self.has_mine
-      raise 'Dead'
-    end
-
+  def clear
     self.clicked = true
     self.state = 'clear'
+  end
 
-    new_discovered = 1
+  def valid_neighbors
     queue = []
-
-    # print "Vizinhos: "
-    # self.neighbors.each {|l| puts "\t[#{l.line_pos}, #{l.col_pos}]"}
-
-    if self.mines_nearby == 0
-      self.neighbors.each do |neighbor|
-        if neighbor.is_valid_to_expand?
-          queue.push(neighbor)
-        end
-      end
+    neighbors.each do |neighbor|
+      queue.push(neighbor) if neighbor.vaild_to_expand?
     end
+    queue
+  end
+
+  def click
+    raise 'Dead' if has_mine
+
+    clear
+    queue = (mines_nearby == 0) ? valid_neighbors : []
 
     queue.each do |element|
-
-      element.clicked = true
-      element.state = 'clear'
-      new_discovered += 1
-
-      if element.mines_nearby == 0
-        element.neighbors.each do |neighbor|
-          if neighbor.is_valid_to_expand?
-            queue.push(neighbor)
-          end
-        end
-      end
+      element.clear
+      next if element.mines_nearby > 0
+      element.valid_neighbors.each { |neighbor| queue.push(neighbor) }
     end
-
     queue.uniq.length + 1
   end
 
-  def is_valid?(is_dead)
-    !self.clicked and !self.has_flag and !is_dead
+  def vaild?(is_dead)
+    !clicked && !has_flag && !is_dead
   end
 
-  def is_valid_to_expand?
-    !self.clicked and !self.has_mine and !self.has_flag
+  def vaild_to_expand?
+    !clicked && !has_mine && !has_flag
   end
 
   def flag
-    if !self.clicked
-      self.has_flag = !self.has_flag
-    end
+    old_flag = has_flag
+    self.has_flag = !self.has_flag unless clicked
 
-    !self.clicked
-  end
-
-  def to_s(xray=false)
-    if xray and self.has_mine
-      return '#'
-    elsif self.has_flag
-      return 'F'
-    elsif self.state == 'unknown'
-      return '.'
-    elsif self.mines_nearby == 0
-      return '*'
+    if old_flag && !has_flag && has_mine
+      score_change = -1
+    elsif !old_flag && has_flag && has_mine
+      score_change = 1
     else
-      return "#{self.mines_nearby}"
+      score_change = 0
     end
-  end
 
+    [!clicked, score_change]
+  end
 end
 
-
+# Monitors the state of a single Minesweeper game
 class Minesweeper
-
   attr_accessor :amount_discovered, :dead, :board
   attr_reader :num_lines, :num_cols, :num_mines
 
@@ -158,44 +121,46 @@ class Minesweeper
     @amount_discovered = 0
     @dead = false
 
-    self.start_board
+    start_board
   end
 
   def start_board
-    @board = Array.new(self.num_lines) { Array.new(self.num_cols, Cell.new(0, 0, self.board)) }
+    @board = Array.new(num_lines) { Array.new(num_cols, Cell.new(0, 0, board)) }
 
-    self.board.each_with_index do |line, line_pos|
-      line.each_with_index do |element, col_pos|
-        self.board[line_pos][col_pos] = Cell.new(line_pos, col_pos, self.board)
+    board.each_with_index do |line, line_pos|
+      line.each_with_index do |_, col_pos|
+        board[line_pos][col_pos] = Cell.new(line_pos, col_pos, board)
       end
     end
 
     mines_deployed = 0
-    while mines_deployed < self.num_mines
-      self.deploy_mine
+    while mines_deployed < num_mines
+      deploy_mine
       mines_deployed += 1
     end
-
   end
 
   def deploy_mine
-    line_pos, col_pos = rand(self.num_lines), rand(self.num_cols)
-    while self.board[line_pos][col_pos].has_mine
-      line_pos, col_pos = rand(self.num_lines), rand(self.num_cols)
+    line_pos = rand(num_lines)
+    col_pos = rand(num_cols)
+    while board[line_pos][col_pos].has_mine
+      line_pos = rand(num_lines)
+      col_pos = rand(num_cols)
     end
-    self.board[line_pos][col_pos].deploy_mine
+    board[line_pos][col_pos].deploy_mine
   end
 
   def flag(line, col)
-    self.board[line][col].flag
+    val, score_change = board[line][col].flag
+    self.amount_discovered += score_change
+    val
   end
 
   def play(line, col)
-    # puts "CLICANDO EM (#{line}, #{col})"
-    if self.still_playing?
+    if still_playing?
       begin
-        if self.board[line][col].is_valid?(self.dead)
-          self.amount_discovered += self.board[line][col].click
+        if board[line][col].vaild?(dead)
+          self.amount_discovered += board[line][col].click
           true
         else
           false
@@ -210,90 +175,94 @@ class Minesweeper
   end
 
   def still_playing?
-    num_clean_slots = self.num_lines * self.num_cols - self.num_mines
-    !self.dead and self.amount_discovered < num_clean_slots
+    num_clean_slots = num_lines * num_cols - num_mines
+    !dead && amount_discovered < num_clean_slots
   end
 
   def victory?
-    self.still_playing? and !self.dead
+    !still_playing? && !dead
   end
 
   def board_state(options = {})
-    return self.board
-    board_repr = Array.new(self.num_lines){ Array.new(self.num_cols, '') }
+    board_repr = Array.new(num_lines) { Array.new(num_cols) }
 
     board_repr.each_with_index do |line, line_pos|
-      line.each_with_index do |element, col_pos|
-        board_repr[line_pos][col_pos] = self.board[line_pos][col_pos].to_s
+      line.each_with_index do |_, col_pos|
+        cell = board[line_pos][col_pos]
+
+        board_repr[line_pos][col_pos] = {
+          has_flag: cell.has_flag,
+          mines_nearby: cell.mines_nearby,
+          state: cell.state
+        }
+
+        if !still_playing? && options[:xray]
+          board_repr[line_pos][col_pos][:has_mine] = cell.has_mine
+        end
       end
     end
-
   end
-
 end
 
-
+# Simple printer for minesweeper board representation
 class SimplePrinter
+  def print_element(element)
+    if element[:has_mine]
+      print '# '
+    elsif element[:has_flag]
+      print 'F '
+    elsif element[:state] == 'unknown'
+      print '. '
+    elsif element[:mines_nearby] > 0
+      print "#{element[:mines_nearby]} "
+    else
+      print 'D '
+    end
+  end
 
   def custom_print(board)
     printed = 0
     while printed < board.length
       board[printed].each do |element|
-        if element.has_mine
-          print "B "
-        elsif element.has_flag
-          print "F "
-        else
-          print element.state[0] + " "
-        end
+        print_element(element)
       end
       print "\n"
       printed += 1
     end
   end
-
 end
 
-
+# Cute printer for minesweeper board representation
 class PrettyPrinter
-
-  def custom_print(board)
-    printed = 0
-    while printed < board.length
-      board[printed].each do |element|
-        if element.has_mine
-          print "B "
-        elsif element.has_flag
-          print "F "
-        else
-          print element.state[0] + " "
-        end
-      end
-      print "\n"
-      printed += 1
+  def print_element(element)
+    if element[:has_mine]
+      print '# '
+    elsif element[:has_flag]
+      print 'F '
+    elsif element[:mines_nearby] > 0 && element[:state] == 'clear'
+      print "#{element[:mines_nearby]} "
+    elsif element[:state] == 'clear'
+      print 'D '
+    else
+      print '. '
     end
   end
 
-end
-
-# This has to work!
-width, height, num_mines = 10, 5, 3
-game = Minesweeper.new(width, height, num_mines)
-
-while game.still_playing?
-  valid_move = game.play(rand(height), rand(width))
-  valid_flag = game.flag(rand(height), rand(width))
-  if valid_move or valid_flag
-    printer = (rand > 0.5) ? SimplePrinter.new : PrettyPrinter.new
-    printer.custom_print(game.board_state)
-    puts
+  def custom_print(board)
+    printed = 0
+    print '+ '
+    print '-' * board[0].length * 2 + ' +'
+    print "\n"
+    while printed < board.length
+      print '| '
+      board[printed].each do |element|
+        print_element(element)
+      end
+      print " |\n"
+      printed += 1
+    end
+    print '+ '
+    print '-' * board[0].length * 2 + ' +'
+    print "\n"
   end
-end
-
-puts "Fim do jogo!"
-if game.victory?
-  puts "Você venceu!"
-else
-  puts "Você perdeu! As minas eram:"
-  PrettyPrinter.new.custom_print(game.board_state(xray: true))
 end
