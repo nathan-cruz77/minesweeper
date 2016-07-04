@@ -4,6 +4,9 @@ class Cell
   attr_accessor :line_pos, :col_pos
 
   def initialize(line_pos, col_pos, board)
+    check_arg(line_pos)
+    check_arg(col_pos)
+
     @line_pos = line_pos
     @col_pos = col_pos
     @board = board
@@ -14,6 +17,11 @@ class Cell
     @has_mine = false
     @has_flag = false
     @clicked = false
+  end
+
+  def check_arg(arg)
+    raise TypeError, "Expected Integer, got #{arg.class}" unless arg.is_a?(Integer)
+    raise ArgumentError, 'Argument cannot be negative' if arg < 0
   end
 
   def mines_nearby
@@ -62,7 +70,7 @@ class Cell
   def valid_neighbors
     queue = []
     neighbors.each do |neighbor|
-      queue.push(neighbor) if neighbor.vaild_to_expand?
+      queue.push(neighbor) if neighbor.valid_to_expand?
     end
     queue
   end
@@ -81,27 +89,17 @@ class Cell
     queue.uniq.length + 1
   end
 
-  def vaild?(is_dead)
+  def valid?(is_dead)
     !clicked && !has_flag && !is_dead
   end
 
-  def vaild_to_expand?
+  def valid_to_expand?
     !clicked && !has_mine && !has_flag
   end
 
   def flag
-    old_flag = has_flag
     self.has_flag = !self.has_flag unless clicked
-
-    if old_flag && !has_flag && has_mine
-      score_change = -1
-    elsif !old_flag && has_flag && has_mine
-      score_change = 1
-    else
-      score_change = 0
-    end
-
-    [!clicked, score_change]
+    !clicked
   end
 end
 
@@ -111,8 +109,12 @@ class Minesweeper
   attr_reader :num_lines, :num_cols, :num_mines
 
   def initialize(width, height, num_mines)
-    if num_mines > width * height
-      raise ArgumentError, 'There can\'t be more mines than slots on the board'
+    check_arg(width)
+    check_arg(height)
+    check_arg(num_mines)
+
+    if num_mines >= width * height
+      raise ArgumentError, 'There must be at least of free slot on the board'
     end
 
     @num_lines = height
@@ -122,6 +124,11 @@ class Minesweeper
     @dead = false
 
     start_board
+  end
+
+  def check_arg(arg)
+    raise TypeError, "Expected Integer, got #{arg.class}" unless arg.is_a?(Integer)
+    raise ArgumentError, 'Argument cannot be negative' if arg < 0
   end
 
   def start_board
@@ -151,15 +158,13 @@ class Minesweeper
   end
 
   def flag(line, col)
-    val, score_change = board[line][col].flag
-    self.amount_discovered += score_change
-    val
+    board[line][col].flag
   end
 
   def play(line, col)
     if still_playing?
       begin
-        if board[line][col].vaild?(dead)
+        if board[line][col].valid?(dead)
           self.amount_discovered += board[line][col].click
           true
         else
